@@ -69,6 +69,8 @@ class TcpTransport(PecronTransport):
                 asyncio.open_connection(self.host, self.port),
                 timeout=self.timeout,
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             raise TransportError(f"TCP connect failed: {exc}") from exc
 
@@ -81,7 +83,7 @@ class TcpTransport(PecronTransport):
     async def _handshake(self) -> None:
         # Step 1: request random IV
         await self._send_raw(build_iv_request(self._next_pid()))
-        resp_raw = await self._recv_packet()
+        resp_raw = await asyncio.wait_for(self._recv_packet(), timeout=self.timeout)
         resp = parse_packet(resp_raw)
         if resp.get("cmd") != 0x7033:
             raise TransportError(f"Expected 0x7033, got 0x{resp.get('cmd', 0):04x}")
@@ -94,7 +96,7 @@ class TcpTransport(PecronTransport):
         # Step 2: login
         login_pkt = build_login_packet(self._next_pid(), self.auth_key, random_str)
         await self._send_raw(login_pkt)
-        resp_raw = await self._recv_packet()
+        resp_raw = await asyncio.wait_for(self._recv_packet(), timeout=self.timeout)
         resp = parse_packet(resp_raw)
         if resp.get("cmd") != 0x7035:
             raise TransportError(f"Login failed — expected 0x7035, got 0x{resp.get('cmd', 0):04x}")
@@ -126,11 +128,17 @@ class TcpTransport(PecronTransport):
         await self._writer.drain()
 
     async def _recv_packet(self) -> bytes:
+        """Read one TTLV packet from the stream.
+
+        No asyncio.wait_for inside — callers own the timeout by wrapping this
+        coroutine. Nesting wait_for on Python 3.12+ causes CancelledError to
+        escape as a BaseException instead of being converted to TimeoutError.
+        """
         assert self._reader is not None
         buf = b""
         # Sync to 0xAA 0xAA
         while True:
-            b = await asyncio.wait_for(self._reader.read(1), timeout=self.timeout)
+            b = await self._reader.read(1)
             if not b:
                 raise TransportError("Connection closed")
             buf += b
@@ -140,23 +148,21 @@ class TcpTransport(PecronTransport):
             if len(buf) > 200:
                 raise TransportError("No sync found in stream")
 
-        # Read 2-byte length
+        # Read 2-byte length (handling 0xAA 0x55 byte-stuffing)
         len_raw = b""
         while len(len_raw) < 2:
-            b = await asyncio.wait_for(self._reader.read(1), timeout=self.timeout)
+            b = await self._reader.read(1)
             if not b:
                 raise TransportError("Connection closed")
             buf += b
-            if buf[-2] == 0xAA and b[0] == 0x55:
+            if len(buf) >= 2 and buf[-2] == 0xAA and b[0] == 0x55:
                 continue
             len_raw += b
 
         pkt_len = struct.unpack(">H", len_raw)[0]
         remaining = pkt_len
         while remaining > 0:
-            chunk = await asyncio.wait_for(
-                self._reader.read(min(remaining, 4096)), timeout=self.timeout
-            )
+            chunk = await self._reader.read(min(remaining, 4096))
             if not chunk:
                 raise TransportError("Connection closed mid-packet")
             buf += chunk
@@ -170,9 +176,13 @@ class TcpTransport(PecronTransport):
         async with self._lock:
             try:
                 return await self._do_read()
+            except asyncio.CancelledError:
+                # HA is shutting down or reloading — clean up and re-raise.
+                self._encrypted = False
+                self._iv = None
+                raise
             except TransportError:
-                # Device closes TCP connection after each response — mark as
-                # disconnected so the coordinator reconnects on the next poll.
+                # Device closes TCP after each response — reconnect next poll.
                 self._encrypted = False
                 self._iv = None
                 raise
@@ -189,7 +199,9 @@ class TcpTransport(PecronTransport):
 
         for _ in range(10):
             try:
-                resp_raw = await asyncio.wait_for(self._recv_packet(), timeout=3.0)
+                resp_raw = await asyncio.wait_for(
+                    self._recv_packet(), timeout=self.timeout
+                )
             except asyncio.TimeoutError:
                 break
             resp = parse_packet(resp_raw)
@@ -234,4 +246,4 @@ class TcpTransport(PecronTransport):
         raw_pkt = b"\xaa\xaa" + struct.pack(">H", length) + bytes([crc]) + inner
         pkt = _byte_stuff(raw_pkt)
         await self._send_raw(pkt)
-        await asyncio.wait_for(self._recv_packet(), timeout=5.0)
+        await asyncio.wait_for(self._recv_packet(), timeout=self.timeout)
