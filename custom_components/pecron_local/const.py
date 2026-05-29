@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 DOMAIN = "pecron_local"
 
 PLATFORMS = ["sensor", "switch", "select"]
