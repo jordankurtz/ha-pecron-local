@@ -16,6 +16,7 @@ from bleak import BleakClient, BleakError
 
 from ..const import BLE_CHAR_UUID
 from ..protocol import (
+    _byte_stuff,
     aes_decrypt,
     aes_encrypt,
     build_iv_request,
@@ -68,9 +69,9 @@ class BleTransport(PecronTransport):
     async def _collect_indications(self, wait: float = 5.0) -> bytes:
         """Collect all queued indication bytes up to `wait` seconds after last packet."""
         accumulated = b""
-        deadline = asyncio.get_event_loop().time() + wait
+        deadline = asyncio.get_running_loop().time() + wait
         while True:
-            remaining = deadline - asyncio.get_event_loop().time()
+            remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
                 break
             try:
@@ -79,7 +80,7 @@ class BleTransport(PecronTransport):
                 )
                 accumulated += chunk
                 # Extend deadline on each received chunk (more may follow)
-                deadline = asyncio.get_event_loop().time() + 2.0
+                deadline = asyncio.get_running_loop().time() + 2.0
             except asyncio.TimeoutError:
                 if accumulated:
                     break
@@ -225,5 +226,6 @@ class BleTransport(PecronTransport):
         inner = struct.pack(">HH", self._next_pid(), 0x0013) + enc_payload
         crc = sum(inner) & 0xFF
         length = len(inner) + 1
-        pkt = b"\xaa\xaa" + struct.pack(">H", length) + bytes([crc]) + inner
+        raw_pkt = b"\xaa\xaa" + struct.pack(">H", length) + bytes([crc]) + inner
+        pkt = _byte_stuff(raw_pkt)
         await self._write_char(pkt)

@@ -46,4 +46,5 @@ class PecronCoordinator(DataUpdateCoordinator[dict]):
                     pass
                 continue
 
+        self.active_transport = None
         raise UpdateFailed("All transports failed")

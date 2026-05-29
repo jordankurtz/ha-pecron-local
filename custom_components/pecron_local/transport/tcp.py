@@ -12,6 +12,7 @@ import logging
 import struct
 
 from ..protocol import (
+    _byte_stuff,
     aes_decrypt,
     aes_encrypt,
     build_iv_request,
@@ -226,6 +227,7 @@ class TcpTransport(PecronTransport):
         inner = struct.pack(">HH", self._next_pid(), 0x0013) + enc_payload
         crc = sum(inner) & 0xFF
         length = len(inner) + 1
-        pkt = b"\xaa\xaa" + struct.pack(">H", length) + bytes([crc]) + inner
+        raw_pkt = b"\xaa\xaa" + struct.pack(">H", length) + bytes([crc]) + inner
+        pkt = _byte_stuff(raw_pkt)
         await self._send_raw(pkt)
         await asyncio.wait_for(self._recv_packet(), timeout=5.0)

@@ -20,28 +20,31 @@ async def test_manual_key_flow_creates_entry(hass):
     with patch(
         "custom_components.pecron_local.config_flow.scan_for_devices",
         return_value=[],
+    ), patch(
+        "custom_components.pecron_local.coordinator.PecronCoordinator.async_config_entry_first_refresh",
+        new_callable=AsyncMock,
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {"host": "192.168.1.100", "mac": ""},
-    )
-    assert result2["step_id"] == "auth_method"
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"host": "192.168.1.100", "mac": ""},
+        )
+        assert result2["step_id"] == "auth_method"
 
-    result3 = await hass.config_entries.flow.async_configure(
-        result2["flow_id"],
-        {"auth_method": "manual"},
-    )
-    assert result3["step_id"] == "manual_key"
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"],
+            {"auth_method": "manual"},
+        )
+        assert result3["step_id"] == "manual_key"
 
-    valid_key = base64.b64encode(b"0123456789abcdef").decode()
-    result4 = await hass.config_entries.flow.async_configure(
-        result3["flow_id"],
-        {"auth_key": valid_key},
-    )
+        valid_key = base64.b64encode(b"0123456789abcdef").decode()
+        result4 = await hass.config_entries.flow.async_configure(
+            result3["flow_id"],
+            {"auth_key": valid_key},
+        )
     assert result4["type"] == FlowResultType.CREATE_ENTRY
     assert result4["data"]["auth_key"] == valid_key
     assert result4["data"]["host"] == "192.168.1.100"
