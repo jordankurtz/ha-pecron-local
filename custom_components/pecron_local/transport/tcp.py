@@ -171,10 +171,14 @@ class TcpTransport(PecronTransport):
             try:
                 return await self._do_read()
             except TransportError:
+                # Device closes TCP connection after each response — mark as
+                # disconnected so the coordinator reconnects on the next poll.
                 self._encrypted = False
+                self._iv = None
                 raise
             except Exception as exc:
                 self._encrypted = False
+                self._iv = None
                 raise TransportError(f"Read failed: {exc}") from exc
 
     async def _do_read(self) -> dict:

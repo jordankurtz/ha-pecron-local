@@ -33,20 +33,28 @@ class PecronCoordinator(DataUpdateCoordinator[dict]):
     async def _async_update_data(self) -> dict:
         errors: list[str] = []
         for transport in self._transports:
-            try:
-                if not transport.connected:
-                    await transport.connect()
-                data = await transport.read()
-                self.active_transport = transport
-                return data
-            except TransportError as exc:
-                errors.append(f"{type(transport).__name__}: {exc}")
-                _LOGGER.debug("Transport %s failed: %s", type(transport).__name__, exc)
+            # Attempt up to 2 tries per transport: once with an existing
+            # connection and once after a fresh connect. Pecron firmware
+            # closes the TCP socket after each response, so the second
+            # attempt handles the reconnect transparently.
+            for attempt in range(2):
                 try:
-                    await transport.disconnect()
-                except Exception:
-                    pass
-                continue
+                    if not transport.connected:
+                        await transport.connect()
+                    data = await transport.read()
+                    self.active_transport = transport
+                    return data
+                except TransportError as exc:
+                    _LOGGER.debug(
+                        "Transport %s attempt %d failed: %s",
+                        type(transport).__name__, attempt + 1, exc,
+                    )
+                    try:
+                        await transport.disconnect()
+                    except Exception:
+                        pass
+                    if attempt == 1:
+                        errors.append(f"{type(transport).__name__}: {exc}")
 
         self.active_transport = None
         raise UpdateFailed(f"All transports failed — {'; '.join(errors)}")
