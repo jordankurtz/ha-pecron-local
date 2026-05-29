@@ -53,6 +53,7 @@ class TcpTransport(PecronTransport):
         self._encrypted = False
         self._packet_id = 0
         self._lock = asyncio.Lock()
+        self._first_read_done = False
 
     @property
     def connected(self) -> bool:
@@ -113,6 +114,7 @@ class TcpTransport(PecronTransport):
     async def disconnect(self) -> None:
         self._encrypted = False
         self._iv = None
+        self._first_read_done = False
         if self._writer:
             try:
                 self._writer.close()
@@ -192,16 +194,35 @@ class TcpTransport(PecronTransport):
                 raise TransportError(f"Read failed: {exc}") from exc
 
     async def _do_read(self) -> dict:
+        # Brief delay after handshake — some firmware drops the connection if a
+        # read arrives too fast. Only wait on the first read after each connect.
+        if not self._first_read_done:
+            await asyncio.sleep(0.5)
+            self._first_read_done = True
+
         await self._send_raw(build_read_packet(self._next_pid()))
+        all_fields = await self._collect_data_packets()
 
+        if not all_fields:
+            # Device sometimes needs a moment to prepare data — retry once.
+            _LOGGER.debug("No fields on first read from %s, retrying in 1s", self.host)
+            await asyncio.sleep(1.0)
+            await self._send_raw(build_read_packet(self._next_pid()))
+            all_fields = await self._collect_data_packets()
+
+        if not all_fields:
+            _LOGGER.debug("No fields in TCP read from %s (even after retry)", self.host)
+            return {}
+
+        return fields_to_kv(all_fields, controls=self.controls)
+
+    async def _collect_data_packets(self) -> list:
+        """Collect 0x0014 response packets after a read command has been sent."""
         all_fields: list = []
-        await asyncio.sleep(0.1)
-
         for _ in range(10):
             try:
-                resp_raw = await asyncio.wait_for(
-                    self._recv_packet(), timeout=self.timeout
-                )
+                # 3.0s per-packet timeout — matches source; signals "no more packets"
+                resp_raw = await asyncio.wait_for(self._recv_packet(), timeout=3.0)
             except asyncio.TimeoutError:
                 break
             resp = parse_packet(resp_raw)
@@ -215,12 +236,7 @@ class TcpTransport(PecronTransport):
                     all_fields.extend(parse_fields(decrypted))
             else:
                 break
-
-        if not all_fields:
-            _LOGGER.debug("No fields in TCP read from %s", self.host)
-            return {}
-
-        return fields_to_kv(all_fields, controls=self.controls)
+        return all_fields
 
     async def write(self, data_point_id: int, value: object, ctrl_type: str) -> None:
         if not self.connected:

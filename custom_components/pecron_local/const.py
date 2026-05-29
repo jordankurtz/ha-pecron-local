@@ -80,18 +80,9 @@ TSL_STRUCT: dict[str, dict[int, str]] = {
     },
     "dc_data_output_hm": {1: "dc_output_power"},
     "ac_data_input_hm": {1: "ac_power"},
-    "dc_data_input_hm": {
-        1: "dc_input_power",
-        2: "dc5521_input_voltage",
-        3: "dc5521_input_current",
-        4: "dc5521_input_power",
-        5: "gx16mf1_input_voltage",
-        6: "gx16mf1_input_current",
-        7: "gx16mf1_input_power",
-        8: "gx16mf2_input_voltage",
-        9: "gx16mf2_input_current",
-        10: "gx16mf2_input_power",
-    },
+    # Solar port sub-field IDs are unknown for local transport — only dc_input_power
+    # (ID 1) is confirmed. Per-port detail fields come from cloud MQTT only.
+    "dc_data_input_hm": {1: "dc_input_power"},
     "charging_pack_data_jdb": {
         1: "charging_pack_num",
         2: "charging_pack_battery",
