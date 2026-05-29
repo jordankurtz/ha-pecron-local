@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -12,7 +11,6 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .cloud_auth import CloudAuthError, cloud_login, fetch_auth_key
 from .const import (
-    BLE_DEVICE_PREFIX,
     CONF_AUTH_KEY,
     CONF_DEVICE_KEY,
     CONF_MAC,

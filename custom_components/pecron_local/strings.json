@@ -34,8 +34,6 @@
     },
     "error": {
       "login_failed": "Login failed — check email and password",
-      "auth_key_fetch_failed": "Could not fetch auth key from cloud",
-      "cannot_connect": "Cannot connect to device",
       "invalid_auth_key": "Auth key must be valid base64"
     },
     "abort": {
