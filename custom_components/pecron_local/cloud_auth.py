@@ -84,6 +84,33 @@ async def cloud_login(email: str, password: str, region_key: str) -> dict:
             return await _do_login(session, email, password, fallback_region)
 
 
+async def fetch_user_devices(token: str, region_key: str) -> list[dict]:
+    """Fetch all devices bound to the user's account.
+
+    Returns list of {name, product_key, device_key}.
+    Ported from pecron-monitor cloud_api.get_user_devices (MIT License).
+    """
+    region = REGIONS[region_key]
+    async with aiohttp.ClientSession() as session:
+        url = region["base_url"] + "/v2/binding/enduserapi/userDeviceList"
+        async with session.get(url, headers={"Authorization": token}) as resp:
+            body = await resp.json(content_type=None)
+    if body.get("code") != 200:
+        return []
+    data = body.get("data", {})
+    device_list = data.get("list", data) if isinstance(data, dict) else data
+    if not isinstance(device_list, list):
+        return []
+    devices = []
+    for d in device_list:
+        pk = d.get("productKey", "")
+        dk = d.get("deviceKey", "")
+        name = d.get("productName", d.get("deviceName", "Unknown"))
+        if pk and dk:
+            devices.append({"product_key": pk, "device_key": dk, "name": name})
+    return devices
+
+
 async def fetch_auth_key(token: str, region_key: str, product_key: str, device_key: str) -> str:
     """Fetch device AES auth key from cloud. Returns base64 string. Raises CloudAuthError on failure."""
     region = REGIONS[region_key]
@@ -92,7 +119,7 @@ async def fetch_auth_key(token: str, region_key: str, product_key: str, device_k
             url = region["base_url"] + f"/v2/binding/enduserapi/{endpoint}"
             async with session.post(url, data={"pk": product_key, "dk": device_key},
                                     headers={"Authorization": token}) as resp:
-                body = await resp.json()
+                body = await resp.json(content_type=None)
             if body.get("code") == 200:
                 return body["data"]["authKey"]
     raise CloudAuthError(f"Failed to get authKey for {device_key}")

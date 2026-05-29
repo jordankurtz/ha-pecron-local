@@ -41,15 +41,24 @@
         "data": {
           "auth_key": "Auth key (base64)"
         }
+      },
+      "pick_cloud_device": {
+        "title": "Select Device",
+        "description": "Choose which device to configure.",
+        "data": {
+          "device_key": "Device"
+        }
       }
     },
     "error": {
       "login_failed": "Login failed — check email and password",
       "invalid_auth_key": "Auth key must be valid base64",
-      "invalid_mac": "Invalid MAC address format (expected AA:BB:CC:DD:EE:FF)"
+      "invalid_mac": "Invalid MAC address format (expected AA:BB:CC:DD:EE:FF)",
+      "no_devices_found": "No devices found on this account"
     },
     "abort": {
-      "already_configured": "Device is already configured"
+      "already_configured": "Device is already configured",
+      "auth_key_fetch_failed": "Could not fetch the device auth key from the cloud"
     }
   }
 }

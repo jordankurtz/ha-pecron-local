@@ -9,7 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 
-from .cloud_auth import CloudAuthError, cloud_login, fetch_auth_key
+from .cloud_auth import CloudAuthError, cloud_login, fetch_auth_key, fetch_user_devices
 from .const import (
     CONF_AUTH_KEY,
     CONF_DEVICE_KEY,
@@ -73,6 +73,8 @@ class PecronLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._device_key: str = ""
         self._product_key: str = ""
         self._region_key: str = "na"
+        self._token: str = ""
+        self._cloud_devices: list[dict] = []
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
         if user_input is None:
@@ -170,15 +172,29 @@ class PecronLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input["email"], user_input["password"], user_input["region"]
                 )
                 self._region_key = user_input["region"]
-                auth_key = await fetch_auth_key(
-                    token=token_data["token"],
-                    region_key=self._region_key,
-                    product_key=self._product_key or "",
-                    device_key=self._device_key or self._mac.replace(":", ""),
-                )
-                return self._create_entry(auth_key)
+                self._token = token_data["token"]
+
+                devices = await fetch_user_devices(self._token, self._region_key)
+                if not devices:
+                    errors["base"] = "no_devices_found"
+                elif len(devices) == 1:
+                    self._product_key = devices[0]["product_key"]
+                    self._device_key = devices[0]["device_key"]
+                    auth_key = await fetch_auth_key(
+                        token=self._token,
+                        region_key=self._region_key,
+                        product_key=self._product_key,
+                        device_key=self._device_key,
+                    )
+                    return self._create_entry(auth_key)
+                else:
+                    self._cloud_devices = devices
+                    return await self.async_step_pick_cloud_device()
             except CloudAuthError as exc:
                 _LOGGER.debug("Cloud auth error: %s", exc)
+                errors["base"] = "login_failed"
+            except Exception as exc:
+                _LOGGER.exception("Unexpected error during cloud auth: %s", exc)
                 errors["base"] = "login_failed"
 
         return self.async_show_form(
@@ -192,6 +208,36 @@ class PecronLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }),
             errors=errors,
         )
+
+    async def async_step_pick_cloud_device(self, user_input: dict | None = None) -> FlowResult:
+        if user_input is None:
+            options = {
+                d["device_key"]: f"{d['name']} ({d['device_key']})"
+                for d in self._cloud_devices
+            }
+            return self.async_show_form(
+                step_id="pick_cloud_device",
+                data_schema=vol.Schema({
+                    vol.Required("device_key"): vol.In(options),
+                }),
+            )
+
+        device_key = user_input["device_key"]
+        selected = next(d for d in self._cloud_devices if d["device_key"] == device_key)
+        self._product_key = selected["product_key"]
+        self._device_key = selected["device_key"]
+
+        try:
+            auth_key = await fetch_auth_key(
+                token=self._token,
+                region_key=self._region_key,
+                product_key=self._product_key,
+                device_key=self._device_key,
+            )
+            return self._create_entry(auth_key)
+        except CloudAuthError as exc:
+            _LOGGER.debug("Failed to fetch auth key: %s", exc)
+            return self.async_abort(reason="auth_key_fetch_failed")
 
     def _create_entry(self, auth_key: str) -> FlowResult:
         preferred = TRANSPORT_TCP if self._host else TRANSPORT_BLE
