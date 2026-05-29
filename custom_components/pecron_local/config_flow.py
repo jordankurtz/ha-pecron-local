@@ -73,25 +73,55 @@ class PecronLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._device_key: str = ""
         self._product_key: str = ""
         self._region_key: str = "na"
-        self._found_devices: list[dict] = []
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
         if user_input is None:
             self._found_devices = await scan_for_devices()
+            options: dict[str, str] = {}
+            for device in self._found_devices:
+                options[device["host"]] = f"{device['name']} ({device['host']})"
+            options["manual_ip"] = "Enter IP address manually"
+            options["manual_mac"] = "Enter Bluetooth MAC manually"
             return self.async_show_form(
                 step_id="user",
                 data_schema=vol.Schema({
-                    vol.Optional("host", default=""): str,
-                    vol.Optional("mac", default=""): str,
+                    vol.Required("device"): vol.In(options),
                 }),
-                description_placeholders={
-                    "found": ", ".join(d["host"] for d in self._found_devices) or "none found"
-                },
             )
 
-        self._host = user_input.get("host", "").strip()
-        self._mac = user_input.get("mac", "").strip()
+        selection = user_input["device"]
+        if selection == "manual_ip":
+            return await self.async_step_manual_host()
+        if selection == "manual_mac":
+            return await self.async_step_manual_mac()
+        # It's an IP from the LAN scan
+        self._host = selection
         return await self.async_step_auth_method()
+
+    async def async_step_manual_host(self, user_input: dict | None = None) -> FlowResult:
+        if user_input is None:
+            return self.async_show_form(
+                step_id="manual_host",
+                data_schema=vol.Schema({vol.Required("host"): str}),
+            )
+        self._host = user_input["host"].strip()
+        return await self.async_step_auth_method()
+
+    async def async_step_manual_mac(self, user_input: dict | None = None) -> FlowResult:
+        import re
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            mac = user_input["mac"].strip()
+            if re.match(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$", mac):
+                self._mac = mac
+                return await self.async_step_auth_method()
+            errors["mac"] = "invalid_mac"
+
+        return self.async_show_form(
+            step_id="manual_mac",
+            data_schema=vol.Schema({vol.Required("mac"): str}),
+            errors=errors,
+        )
 
     async def async_step_bluetooth(self, discovery_info) -> FlowResult:
         await self.async_set_unique_id(discovery_info.address)

@@ -3,10 +3,21 @@
     "step": {
       "user": {
         "title": "Pecron Local — Add Device",
-        "description": "Scanning for Pecron devices on your network...",
+        "description": "Select a discovered device or add one manually.",
         "data": {
-          "host": "Device IP address",
-          "mac": "Bluetooth MAC address"
+          "device": "Device"
+        }
+      },
+      "manual_host": {
+        "title": "Enter IP Address",
+        "data": {
+          "host": "Device IP address"
+        }
+      },
+      "manual_mac": {
+        "title": "Enter Bluetooth MAC Address",
+        "data": {
+          "mac": "Bluetooth MAC address (e.g. AA:BB:CC:DD:EE:FF)"
         }
       },
       "auth_method": {
@@ -34,7 +45,8 @@
     },
     "error": {
       "login_failed": "Login failed — check email and password",
-      "invalid_auth_key": "Auth key must be valid base64"
+      "invalid_auth_key": "Auth key must be valid base64",
+      "invalid_mac": "Invalid MAC address format (expected AA:BB:CC:DD:EE:FF)"
     },
     "abort": {
       "already_configured": "Device is already configured"
