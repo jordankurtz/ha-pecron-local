@@ -1,0 +1,13 @@
+{
+  "domain": "pecron_local",
+  "name": "Pecron Local",
+  "version": "0.1.0",
+  "config_flow": true,
+  "dependencies": [],
+  "requirements": [],
+  "bluetooth": [{"local_name": "QUEC_BLE"}],
+  "iot_class": "local_polling",
+  "documentation": "https://github.com/jordankurtz/ha-pecron-local",
+  "issue_tracker": "https://github.com/jordankurtz/ha-pecron-local/issues",
+  "codeowners": ["@jordankurtz"]
+}
