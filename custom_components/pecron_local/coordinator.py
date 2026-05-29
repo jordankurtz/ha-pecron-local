@@ -31,6 +31,7 @@ class PecronCoordinator(DataUpdateCoordinator[dict]):
         self.active_transport: PecronTransport | None = None
 
     async def _async_update_data(self) -> dict:
+        errors: list[str] = []
         for transport in self._transports:
             try:
                 if not transport.connected:
@@ -39,6 +40,7 @@ class PecronCoordinator(DataUpdateCoordinator[dict]):
                 self.active_transport = transport
                 return data
             except TransportError as exc:
+                errors.append(f"{type(transport).__name__}: {exc}")
                 _LOGGER.debug("Transport %s failed: %s", type(transport).__name__, exc)
                 try:
                     await transport.disconnect()
@@ -47,4 +49,4 @@ class PecronCoordinator(DataUpdateCoordinator[dict]):
                 continue
 
         self.active_transport = None
-        raise UpdateFailed("All transports failed")
+        raise UpdateFailed(f"All transports failed — {'; '.join(errors)}")
