@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pecron Local — Add Device",
+        "description": "Scanning for Pecron devices on your network...",
+        "data": {
+          "host": "Device IP address",
+          "mac": "Bluetooth MAC address"
+        }
+      },
+      "auth_method": {
+        "title": "Authentication",
+        "description": "How do you want to provide the device auth key?",
+        "data": {
+          "auth_method": "Method"
+        }
+      },
+      "credentials": {
+        "title": "Pecron Account",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "region": "Region"
+        }
+      },
+      "manual_key": {
+        "title": "Enter Auth Key",
+        "description": "Paste the base64 auth key from `pecron-monitor --setup` or the ha-pecron integration.",
+        "data": {
+          "auth_key": "Auth key (base64)"
+        }
+      }
+    },
+    "error": {
+      "login_failed": "Login failed — check email and password",
+      "auth_key_fetch_failed": "Could not fetch auth key from cloud",
+      "cannot_connect": "Cannot connect to device",
+      "invalid_auth_key": "Auth key must be valid base64"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}
