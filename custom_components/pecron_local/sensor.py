@@ -80,8 +80,8 @@ SENSOR_DESCRIPTIONS: list[PecronSensorDescription] = [
 class PecronSensor(PecronEntity, SensorEntity):
     entity_description: PecronSensorDescription
 
-    def __init__(self, coordinator: PecronCoordinator, entry_id: str, description: PecronSensorDescription) -> None:
-        super().__init__(coordinator, entry_id, description.key)
+    def __init__(self, coordinator: PecronCoordinator, entry: ConfigEntry, description: PecronSensorDescription) -> None:
+        super().__init__(coordinator, entry, description.key)
         self.entity_description = description
 
     @property
@@ -99,6 +99,6 @@ class PecronSensor(PecronEntity, SensorEntity):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: PecronCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
-        PecronSensor(coordinator, entry.entry_id, desc)
+        PecronSensor(coordinator, entry, desc)
         for desc in SENSOR_DESCRIPTIONS
     ])

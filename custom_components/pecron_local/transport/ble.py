@@ -112,7 +112,22 @@ class BleTransport(PecronTransport):
         try:
             self._client = BleakClient(self.mac, timeout=_CONNECT_TIMEOUT)
             await self._client.connect()
+            # Best-effort pairing — required on some platforms when the device
+            # enforces GATT-level authentication. Silently ignored if unsupported.
+            try:
+                await self._client.pair()
+            except Exception:
+                pass
             await self._client.start_notify(BLE_CHAR_UUID, self._on_notify)
+        except BleakError as exc:
+            await self.disconnect()
+            err_lower = str(exc).lower()
+            if any(w in err_lower for w in ("authentication", "authorize", "insufficient", "gatt error code=15")):
+                raise TransportError(
+                    f"BLE GATT authentication failed for {self.mac}. "
+                    "Pair the device via your OS Bluetooth settings first, then retry."
+                ) from exc
+            raise TransportError(f"BLE connect failed: {exc}") from exc
         except Exception as exc:
             await self.disconnect()
             raise TransportError(f"BLE connect failed: {exc}") from exc
