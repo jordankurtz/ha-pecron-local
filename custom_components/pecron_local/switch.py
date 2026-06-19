@@ -42,8 +42,8 @@ _SWITCH_FIELD_MAP = {
 class PecronSwitch(PecronEntity, SwitchEntity):
     entity_description: PecronSwitchDescription
 
-    def __init__(self, coordinator: PecronCoordinator, entry_id: str, description: PecronSwitchDescription) -> None:
-        super().__init__(coordinator, entry_id, description.key)
+    def __init__(self, coordinator: PecronCoordinator, entry: ConfigEntry, description: PecronSwitchDescription) -> None:
+        super().__init__(coordinator, entry, description.key)
         self.entity_description = description
 
     @property
@@ -73,6 +73,6 @@ class PecronSwitch(PecronEntity, SwitchEntity):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: PecronCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
-        PecronSwitch(coordinator, entry.entry_id, desc)
+        PecronSwitch(coordinator, entry, desc)
         for desc in SWITCH_DESCRIPTIONS
     ])

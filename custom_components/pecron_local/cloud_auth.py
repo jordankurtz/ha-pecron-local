@@ -8,12 +8,15 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import secrets
 import string
 
 import aiohttp
 
 from .const import REGIONS
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CloudAuthError(Exception):
@@ -51,7 +54,7 @@ async def _do_login(session: aiohttp.ClientSession, email: str, password: str, r
     params = _make_auth_params(email, password, region)
     url = region["base_url"] + "/v2/enduser/enduserapi/emailPwdLogin"
     async with session.post(url, data=params) as resp:
-        body = await resp.json()
+        body = await resp.json(content_type=None)
 
     if body.get("code") != 200:
         raise CloudAuthError(f"Login failed (code {body.get('code')}): {body.get('msg', body)}")
@@ -112,14 +115,29 @@ async def fetch_user_devices(token: str, region_key: str) -> list[dict]:
 
 
 async def fetch_auth_key(token: str, region_key: str, product_key: str, device_key: str) -> str:
-    """Fetch device AES auth key from cloud. Returns base64 string. Raises CloudAuthError on failure."""
+    """Fetch device AES auth key from cloud. Returns base64 string. Raises CloudAuthError on failure.
+
+    Tries getAuthKey first (read-only), then regenerateAuthKey as fallback.
+    Each attempt is isolated so a network/parse error on the first doesn't
+    prevent trying the second.
+    """
     region = REGIONS[region_key]
+    last_error: str = "no attempts made"
     async with aiohttp.ClientSession() as session:
         for endpoint in ["getAuthKey", "regenerateAuthKey"]:
             url = region["base_url"] + f"/v2/binding/enduserapi/{endpoint}"
-            async with session.post(url, data={"pk": product_key, "dk": device_key},
-                                    headers={"Authorization": token}) as resp:
-                body = await resp.json(content_type=None)
-            if body.get("code") == 200:
-                return body["data"]["authKey"]
-    raise CloudAuthError(f"Failed to get authKey for {device_key}")
+            try:
+                async with session.post(
+                    url,
+                    data={"pk": product_key, "dk": device_key},
+                    headers={"Authorization": token},
+                ) as resp:
+                    body = await resp.json(content_type=None)
+                if body.get("code") == 200:
+                    return body["data"]["authKey"]
+                last_error = f"{endpoint}: code={body.get('code')} msg={body.get('msg', '')}"
+                _LOGGER.debug("fetch_auth_key %s", last_error)
+            except Exception as exc:
+                last_error = f"{endpoint}: {exc}"
+                _LOGGER.debug("fetch_auth_key %s", last_error)
+    raise CloudAuthError(f"Failed to get authKey for {device_key}: {last_error}")

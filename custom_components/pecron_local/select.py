@@ -42,8 +42,8 @@ SELECT_DESCRIPTIONS: list[PecronSelectDescription] = [
 class PecronSelect(PecronEntity, SelectEntity):
     entity_description: PecronSelectDescription
 
-    def __init__(self, coordinator: PecronCoordinator, entry_id: str, description: PecronSelectDescription) -> None:
-        super().__init__(coordinator, entry_id, description.key)
+    def __init__(self, coordinator: PecronCoordinator, entry: ConfigEntry, description: PecronSelectDescription) -> None:
+        super().__init__(coordinator, entry, description.key)
         self.entity_description = description
         self._attr_options = description.options
 
@@ -78,6 +78,6 @@ class PecronSelect(PecronEntity, SelectEntity):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: PecronCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
-        PecronSelect(coordinator, entry.entry_id, desc)
+        PecronSelect(coordinator, entry, desc)
         for desc in SELECT_DESCRIPTIONS
     ])
