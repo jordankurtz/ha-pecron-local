@@ -20,6 +20,7 @@ class PecronCoordinator(DataUpdateCoordinator[dict]):
         tcp: PecronTransport | None,
         ble: PecronTransport | None,
         poll_interval: int = 30,
+        effective_controls: dict | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -29,6 +30,12 @@ class PecronCoordinator(DataUpdateCoordinator[dict]):
         )
         self._transports = [t for t in [tcp, ble] if t is not None]
         self.active_transport: PecronTransport | None = None
+        self.effective_controls: dict = effective_controls or {}
+
+    def data_point_id_for(self, key: str, fallback: int) -> int:
+        """Return the device-specific data point ID for a control key."""
+        ctrl = self.effective_controls.get(key, {})
+        return ctrl.get("id", fallback)
 
     async def _async_update_data(self) -> dict:
         errors: list[str] = []

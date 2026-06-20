@@ -63,8 +63,11 @@ class PecronSwitch(PecronEntity, SwitchEntity):
         transport = self.coordinator.active_transport
         if transport is None:
             return
+        dpid = self.coordinator.data_point_id_for(
+            self.entity_description.key, self.entity_description.data_point_id
+        )
         try:
-            await transport.write(self.entity_description.data_point_id, value, "BOOL")
+            await transport.write(dpid, value, "BOOL")
         except TransportError:
             pass
         await self.coordinator.async_request_refresh()

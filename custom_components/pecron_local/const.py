@@ -11,6 +11,15 @@ CONF_PREFERRED_TRANSPORT = "preferred_transport"
 CONF_REGION = "region"
 CONF_DEVICE_KEY = "device_key"
 CONF_PRODUCT_KEY = "product_key"
+CONF_TSL = "tsl"
+
+# Some Pecron models (e.g. F3000LFP) use different TSL code names for the same
+# controls compared to other models. This maps cloud TSL code → HA entity key.
+CLOUD_TSL_ALIASES: dict[str, str] = {
+    "false_touch_us": "device_touch_locking_as",
+    "eco_onoff_us": "eco_quite_mode_as",
+    "key_light_us": "machine_screen_light_as",
+}
 
 DEFAULT_POLL_INTERVAL = 30
 DEFAULT_PORT = 6607

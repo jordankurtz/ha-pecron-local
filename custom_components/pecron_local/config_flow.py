@@ -9,7 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 
-from .cloud_auth import CloudAuthError, cloud_login, fetch_auth_key, fetch_user_devices
+from .cloud_auth import CloudAuthError, cloud_login, fetch_auth_key, fetch_product_tsl, fetch_user_devices
 from .const import (
     CONF_AUTH_KEY,
     CONF_DEVICE_KEY,
@@ -18,6 +18,7 @@ from .const import (
     CONF_PREFERRED_TRANSPORT,
     CONF_PRODUCT_KEY,
     CONF_REGION,
+    CONF_TSL,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_PORT,
     DOMAIN,
@@ -186,7 +187,8 @@ class PecronLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         product_key=self._product_key,
                         device_key=self._device_key,
                     )
-                    return self._create_entry(auth_key)
+                    tsl = await fetch_product_tsl(self._token, self._region_key, self._product_key)
+                    return self._create_entry(auth_key, tsl=tsl)
                 else:
                     self._cloud_devices = devices
                     return await self.async_step_pick_cloud_device()
@@ -234,23 +236,69 @@ class PecronLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 product_key=self._product_key,
                 device_key=self._device_key,
             )
-            return self._create_entry(auth_key)
+            tsl = await fetch_product_tsl(self._token, self._region_key, self._product_key)
+            return self._create_entry(auth_key, tsl=tsl)
         except CloudAuthError as exc:
             _LOGGER.debug("Failed to fetch auth key: %s", exc)
             return self.async_abort(reason="auth_key_fetch_failed")
 
-    def _create_entry(self, auth_key: str) -> FlowResult:
+    def _create_entry(self, auth_key: str, tsl: dict | None = None) -> FlowResult:
         preferred = TRANSPORT_TCP if self._host else TRANSPORT_BLE
+        data: dict = {
+            "host": self._host or None,
+            CONF_MAC: self._mac or None,
+            CONF_AUTH_KEY: auth_key,
+            CONF_POLL_INTERVAL: DEFAULT_POLL_INTERVAL,
+            CONF_PREFERRED_TRANSPORT: preferred,
+            CONF_DEVICE_KEY: self._device_key,
+            CONF_PRODUCT_KEY: self._product_key,
+            CONF_REGION: self._region_key,
+        }
+        if tsl:
+            data[CONF_TSL] = tsl
         return self.async_create_entry(
             title=f"Pecron @ {self._host or self._mac}",
-            data={
-                "host": self._host or None,
-                CONF_MAC: self._mac or None,
-                CONF_AUTH_KEY: auth_key,
-                CONF_POLL_INTERVAL: DEFAULT_POLL_INTERVAL,
-                CONF_PREFERRED_TRANSPORT: preferred,
-                CONF_DEVICE_KEY: self._device_key,
-                CONF_PRODUCT_KEY: self._product_key,
-                CONF_REGION: self._region_key,
-            },
+            data=data,
+        )
+
+    async def async_step_reconfigure(self, user_input: dict | None = None) -> FlowResult:
+        """Re-authenticate with cloud to refresh the device TSL (data point IDs)."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                token_data = await cloud_login(
+                    user_input["email"], user_input["password"], user_input["region"]
+                )
+                token = token_data["token"]
+                region_key = user_input["region"]
+                product_key = self._get_reconfigure_entry().data.get(CONF_PRODUCT_KEY, "")
+                if not product_key:
+                    errors["base"] = "no_product_key"
+                else:
+                    tsl = await fetch_product_tsl(token, region_key, product_key)
+                    if not tsl:
+                        errors["base"] = "tsl_fetch_failed"
+                    else:
+                        return self.async_update_reload_and_abort(
+                            self._get_reconfigure_entry(),
+                            data_updates={CONF_TSL: tsl},
+                            reason="reconfigure_successful",
+                        )
+            except CloudAuthError:
+                errors["base"] = "login_failed"
+            except Exception as exc:
+                _LOGGER.exception("Reconfigure error: %s", exc)
+                errors["base"] = "login_failed"
+
+        stored_region = self._get_reconfigure_entry().data.get(CONF_REGION, "na")
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema({
+                vol.Required("email"): str,
+                vol.Required("password"): str,
+                vol.Required("region", default=stored_region): vol.In({
+                    k: v["name"] for k, v in REGIONS.items()
+                }),
+            }),
+            errors=errors,
         )

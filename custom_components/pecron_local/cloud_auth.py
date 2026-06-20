@@ -114,6 +114,41 @@ async def fetch_user_devices(token: str, region_key: str) -> list[dict]:
     return devices
 
 
+async def fetch_product_tsl(token: str, region_key: str, product_key: str) -> dict:
+    """Fetch TSL (Thing Specification Language) for a product from cloud.
+
+    Returns {code: {id, type, desc, access}} with device-specific data point IDs.
+    Ported from pecron-monitor cloud_api.get_product_tsl (MIT License).
+    Returns {} on failure so callers fall back to hardcoded TSL_TOP defaults.
+    """
+    region = REGIONS[region_key]
+    async with aiohttp.ClientSession() as session:
+        url = region["base_url"] + f"/v2/binding/enduserapi/productTSL?pk={product_key}"
+        try:
+            async with session.get(url, headers={"Authorization": token}) as resp:
+                body = await resp.json(content_type=None)
+        except Exception as exc:
+            _LOGGER.debug("TSL fetch failed: %s", exc)
+            return {}
+
+    if body.get("code") != 200:
+        _LOGGER.debug("TSL fetch failed: code=%s msg=%s", body.get("code"), body.get("msg"))
+        return {}
+
+    controls: dict = {}
+    for prop in body.get("data", {}).get("properties", []):
+        dt = prop.get("dataType", {})
+        dtype = dt.get("type", dt) if isinstance(dt, dict) else str(dt)
+        access = prop.get("subType", prop.get("accessMode", "R"))
+        controls[prop["code"]] = {
+            "id": prop["id"],
+            "type": dtype,
+            "desc": prop.get("name", prop["code"]),
+            "access": access,
+        }
+    return controls
+
+
 async def fetch_auth_key(token: str, region_key: str, product_key: str, device_key: str) -> str:
     """Fetch device AES auth key from cloud. Returns base64 string. Raises CloudAuthError on failure.
 
