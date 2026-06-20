@@ -140,12 +140,41 @@ async def fetch_product_tsl(token: str, region_key: str, product_key: str) -> di
         dt = prop.get("dataType", {})
         dtype = dt.get("type", dt) if isinstance(dt, dict) else str(dt)
         access = prop.get("subType", prop.get("accessMode", "R"))
-        controls[prop["code"]] = {
+
+        specs = None
+        if isinstance(dt, dict) and "specs" in dt:
+            raw = dt["specs"]
+            if isinstance(raw, list):
+                # ENUM: [{name, value}, ...] — sort by integer value
+                parsed = []
+                for i, s in enumerate(raw):
+                    try:
+                        val = int(s.get("value", i))
+                    except (TypeError, ValueError):
+                        val = i
+                    parsed.append({"name": str(s.get("name", val)), "value": val})
+                specs = sorted(parsed, key=lambda x: x["value"])
+            elif isinstance(raw, dict):
+                # INT range: {min, max, step, unit}
+                try:
+                    specs = {
+                        "min": float(raw.get("min", 0)),
+                        "max": float(raw.get("max", 100)),
+                        "step": float(raw.get("step", 1)),
+                        "unit": str(raw.get("unit", "")),
+                    }
+                except (TypeError, ValueError):
+                    pass
+
+        entry: dict = {
             "id": prop["id"],
             "type": dtype,
             "desc": prop.get("name", prop["code"]),
             "access": access,
         }
+        if specs is not None:
+            entry["specs"] = specs
+        controls[prop["code"]] = entry
     return controls
 
 

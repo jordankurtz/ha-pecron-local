@@ -39,13 +39,31 @@ SELECT_DESCRIPTIONS: list[PecronSelectDescription] = [
 ]
 
 
+def _options_from_specs(specs: list[dict]) -> tuple[list[str], dict[int, str], dict[str, int]]:
+    """Build (options_list, value→name, name→value) from TSL enum specs."""
+    ordered = sorted(specs, key=lambda s: s["value"])
+    options = [s["name"] for s in ordered]
+    value_to_name = {s["value"]: s["name"] for s in ordered}
+    name_to_value = {s["name"]: s["value"] for s in ordered}
+    return options, value_to_name, name_to_value
+
+
 class PecronSelect(PecronEntity, SelectEntity):
     entity_description: PecronSelectDescription
 
     def __init__(self, coordinator: PecronCoordinator, entry: ConfigEntry, description: PecronSelectDescription) -> None:
         super().__init__(coordinator, entry, description.key)
         self.entity_description = description
-        self._attr_options = description.options
+
+        specs = coordinator.effective_controls.get(description.key, {}).get("specs")
+        if specs and isinstance(specs, list):
+            options, self._value_to_name, self._name_to_value = _options_from_specs(specs)
+        else:
+            options = description.options
+            self._value_to_name = {i: opt for i, opt in enumerate(options)}
+            self._name_to_value = {opt: i for i, opt in enumerate(options)}
+
+        self._attr_options = options
 
     @property
     def current_option(self) -> str | None:
@@ -55,15 +73,13 @@ class PecronSelect(PecronEntity, SelectEntity):
         if val is None:
             return None
         try:
-            idx = int(val)
-            return self.entity_description.options[idx]
-        except (IndexError, TypeError, ValueError):
+            return self._value_to_name.get(int(val))
+        except (TypeError, ValueError):
             return None
 
     async def async_select_option(self, option: str) -> None:
-        try:
-            idx = self.entity_description.options.index(option)
-        except ValueError:
+        device_value = self._name_to_value.get(option)
+        if device_value is None:
             return
         transport = self.coordinator.active_transport
         if transport is None:
@@ -72,7 +88,7 @@ class PecronSelect(PecronEntity, SelectEntity):
             self.entity_description.key, self.entity_description.data_point_id
         )
         try:
-            await transport.write(dpid, idx, "ENUM")
+            await transport.write(dpid, device_value, "ENUM")
         except TransportError:
             pass
         await self.coordinator.async_request_refresh()

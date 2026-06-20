@@ -41,6 +41,8 @@ def _build_effective_controls(tsl: dict) -> dict:
         ha_key = cloud_to_ha.get(cloud_code)
         if ha_key and ha_key in effective:
             effective[ha_key]["id"] = info["id"]
+            if "specs" in info:
+                effective[ha_key]["specs"] = info["specs"]
 
     return effective
 
